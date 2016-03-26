@@ -1,5 +1,5 @@
 #: The path to the opencv install's Haar cascade folder
-HCDIR = 'C:/opencv/sources/data/haarcascades/'
+HCDIR = '/usr/share/opencv/haarcascades/'
 
 #: The name of the eyepair Haar cascade file to use
 HC_EYEPAIR_NAME = 'haarcascade_mcs_eyepair_big.xml'
@@ -17,7 +17,7 @@ HC_FACE_NAME = 'haarcascade_frontalface_alt2.xml'
 HEIGHT_TARGET = 720
 
 #: The final image width
-WIDTH_TARGET = 960
+WIDTH_TARGET = 1437
 
 #: What is used when the image must be offset too far? 0 for black border, 1 for stretch colors
 GAP_BORDER = 1
