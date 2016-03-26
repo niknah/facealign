@@ -6,12 +6,14 @@
  
 # Usage: python sizeToFace.py <image_directory> optional: <output_directory> <start_num>,<end_num>
 # ffmpeg -r 15 -b 1800 -i %4d.JPG -i testSong.mp3 test1800.avi
- 
+
+import sys
+import os
 import FaceImage
 from multiprocessing import Pool
-import sys, os
 from operator import itemgetter
 from PIL import Image
+
 
 def main():
     # Print usage if no args specified
@@ -21,7 +23,7 @@ def main():
         return
 
     # Get input files, sort by last modified time
-    files = sortedImages(args[0])
+    files = sorted_images(args[0])
 
     if len(files) == 0:
         print('No jpg files found in ' + args[0])
@@ -40,38 +42,43 @@ def main():
             start = int(args[2])-1
    
     files = files[start:end+1]
-    i=start
+    i = start
     pool = Pool()
 
     # For every JPG in the given directory
-    for file in files:
-        filepath = file[1]
+    results = {}
+    for f in files:
         i += 1
         savename = os.path.join(outdir, '%04d.jpg' % i)
 
-        print('Added to pool: ' + filepath + ' with output path: ' + savename)
-        pool.apply_async(FaceImage.runFaceImage, (filepath, savename))
+        print('Added to pool: ' + f[1] + ' with output path: ' + savename)
+        results[f[1]] = pool.apply_async(FaceImage.runFaceImage, (f[1], savename))
 
     pool.close()
     pool.join()
 
-def sortedImages(inputDir):
+    # Check the results :
+    frames_validity = [res[1].get() for res in results.items()]
+    print(frames_validity)
+
+
+def sorted_images(input_dir):
     files = []
-    for dirpath, dirnames, filenames in os.walk(inputDir):
+    for dirpath, dirnames, filenames in os.walk(input_dir):
         for filename in filenames:
             if filename.upper().endswith('.JPG') or filename.upper().endswith('.JPEG'):
-                filePath = os.path.join(dirpath, filename)
-                files.append((getImageDate(filePath), filePath))
+                file_path = os.path.join(dirpath, filename)
+                files.append((get_image_date(file_path), file_path))
 
     # Sort by last modified, then by path
-    # (some old pics in my set have an equal recent modified time)
-    files.sort(key=itemgetter(0,1))
+    files.sort(key=itemgetter(0, 1))
     return files
 
-def getImageDate(filePath):
+
+def get_image_date(file_path):
     """ This returns the date as a formatted string like yyyy:mm:dd hh:mm:ss. Which is good enough for sorting. """
     DateTimeOriginalKey = 36867
-    return Image.open(filePath)._getexif()[DateTimeOriginalKey]
+    return Image.open(file_path)._getexif()[DateTimeOriginalKey]
 
 if __name__ == "__main__":
     main()

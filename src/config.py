@@ -14,13 +14,13 @@ HC_RIGHTEYE_NAME = 'haarcascade_righteye_2splits.xml'
 HC_FACE_NAME = 'haarcascade_frontalface_alt2.xml'
 
 #: The final image height
-HEIGHT_TARGET = 720
+HEIGHT_TARGET = 2160
 
 #: The final image width
-WIDTH_TARGET = 1437
+WIDTH_TARGET = 1620
 
 #: What is used when the image must be offset too far? 0 for black border, 1 for stretch colors
-GAP_BORDER = 1
+GAP_BORDER = 0
 
 
 
@@ -94,7 +94,7 @@ MIDPOINT_COLOR = (100, 100, 100)
 # You probably don't need to change anything below this point
 
 #: The target eyeWidth:imageHeight
-EYEW_RATIO_TARGET = .25
+EYEW_RATIO_TARGET = .02
 
 #: The target distance between eyes
 EYEW_TARGET = EYEW_RATIO_TARGET*HEIGHT_TARGET

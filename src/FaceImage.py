@@ -11,6 +11,7 @@ HC_LEFTEYEPATH = os.path.join(HCDIR, HC_LEFTEYE_NAME)
 HC_RIGHTEYEPATH = os.path.join(HCDIR, HC_RIGHTEYE_NAME)
 HC_FACEPATH = os.path.join(HCDIR, HC_FACE_NAME)
 
+
 class Point:
     def __init__(self, *args):
         if len(args) == 1:
@@ -24,14 +25,15 @@ class Point:
         """ Returns the pythagorean distance from this point to p1 """
         return pow(pow(self.x - p1.x, 2) + pow(self.y - p1.y, 2), .5)
 
-    def toTuple(self):
-        return (self.x, self.y)
+    def to_tuple(self):
+        return self.x, self.y
 
     def __str__(self):
         return '({0}, {1})'.format(self.x, self.y)
 
     def __repr(self):
         return self.__str__()
+
 
 class Size:
     def __init__(self, *args):
@@ -42,14 +44,15 @@ class Size:
             self.w = args[0]
             self.h = args[1]
 
-    def toTuple(self):
-        return (self.w, self.h)
+    def to_tuple(self):
+        return self.w, self.h
 
     def __str__(self):
         return '({0}, {1})'.format(self.w, self.h)
 
     def __repr(self):
         return self.__str__()
+
 
 class Rect:
     def __init__(self, array):
@@ -77,6 +80,7 @@ class Rect:
     def __repr(self):
         return self.__str__()
 
+
 class FaceImage:
     """ Represents an image with a face in it, and all the scaling/cropping that goes along with it. """
 
@@ -88,24 +92,24 @@ class FaceImage:
         self._finalImg = None
         self.log = ''
 
-    def cropToFace(self):
+    def crop_to_face(self):
         """ Finds the face position of the OpenCV image, scales so that the face is the 'ideal'
         size, then crops so that the face is in the center """
         self._log('Starting ' + self.imagepath)
         eyepair = None
-        lEye = rEye = None
+        l_eye = r_eye = None
 
         if not FORCE_FULL_FACE:
             eyepair = self._getEyePair()
-            lEye, rEye = self._getEyes(eyepair)
+            l_eye, r_eye = self._getEyes(eyepair)
 
         # Find the middle of the eyes
-        if lEye is not None and rEye is not None:
-            mid = Point(rEye.center.x/2.0 + lEye.center.x/2.0,
-                        rEye.center.y/2.0 + lEye.center.y/2.0)
-            eyewidth = rEye.center.dist(lEye.center)
-            eyeAngle = math.degrees(
-                math.atan((rEye.center.y - lEye.center.y)/(rEye.center.x - lEye.center.x)))
+        if l_eye is not None and r_eye is not None:
+            mid = Point(r_eye.center.x/2.0 + l_eye.center.x/2.0,
+                        r_eye.center.y/2.0 + l_eye.center.y/2.0)
+            eyewidth = r_eye.center.dist(l_eye.center)
+            eyeAngle = math.degrees( math.atan((r_eye.center.y - l_eye.center.y)/(r_eye.center.x - l_eye.center.x)))
+
         else:
             eyeAngle = 0
             if eyepair is not None:
@@ -115,17 +119,22 @@ class FaceImage:
             else:
                 self._log('No eyes found, falling back on face')
                 face = self._getFace()
-                mid = Point(face.center.x, face.h*FACE_HEIGHT_TO_EYE_MID + face.y)
-                eyewidth = face.w*FACE_WIDTH_TO_EYE_WIDTH
-                if MARKUSED or MARKALL:
-                    self._markPoint(mid, MIDPOINT_COLOR)
+
+                if face is not None:
+                    mid = Point(face.center.x, face.h*FACE_HEIGHT_TO_EYE_MID + face.y)
+                    eyewidth = face.w*FACE_WIDTH_TO_EYE_WIDTH
+                    if MARKUSED or MARKALL:
+                        self._markPoint(mid, MIDPOINT_COLOR)
+
+                else:
+                    return False
 
         self._log('', 1)
         self._log('Eye mid at: ' + str(mid) + ', should be: ' + str(Point(MID_X_TARGET, MID_Y_TARGET)), 1)
 
         if NOTRANSFORM:
             self._finalImg = self.image
-            return
+            return True
 
         # Calculate scaling params
         scaleF = EYEW_TARGET/eyewidth
@@ -136,27 +145,29 @@ class FaceImage:
         self._log('Pre-crop scaled size: ' + str(scSize), 1)
 
         # Scale image
-        scImg = cv.resize(self.image, (scSize.w, scSize.h), interpolation=cv.INTER_LANCZOS4)
+        scaled_image = cv.resize(self.image, (scSize.w, scSize.h), interpolation=cv.INTER_LANCZOS4)
 
         # Determine translation. offset: (positive leaves a top/left border, negative doesn't)
         self._log('Scaled midpoint: ' + str(scMid), 1)
         self._log('Target midpoint: ' + str(Point(MID_X_TARGET, MID_Y_TARGET)), 1)
         offset = Point(int(MID_X_TARGET - scMid.x), int(MID_Y_TARGET - scMid.y))
         self._log("offset: " + str(offset), 1)
-        translatedScaledImage = crop(scImg, offset, Size(WIDTH_TARGET, HEIGHT_TARGET))
+        translated_scaled_image = crop(scaled_image, offset, Size(WIDTH_TARGET, HEIGHT_TARGET))
 
         # Rotate
         if eyeAngle == 0:
-            self._finalImg = translatedScaledImage
+            self._finalImg = translated_scaled_image
         else:
             self._log('Rotating to: ' + str(eyeAngle))
-            rotMatrix = cv.getRotationMatrix2D((MID_X_TARGET, MID_Y_TARGET), eyeAngle, 1)
-            self._finalImg = cv.warpAffine(translatedScaledImage, rotMatrix, (WIDTH_TARGET, HEIGHT_TARGET))
+            rot_mat = cv.getRotationMatrix2D((MID_X_TARGET, MID_Y_TARGET), eyeAngle, 1)
+            self._finalImg = cv.warpAffine(translated_scaled_image, rot_mat, (WIDTH_TARGET, HEIGHT_TARGET))
+
+        return True
 
     def save(self, outputpath):
         """ Saves the final image to the specified output path. Creates the path if necessary """
         self._log('Saving as ' + outputpath)
-        if self._finalImg == None:
+        if self._finalImg is None:
             raise Exception('Final image is uninitialized- run cropToFace first')
 
         outdir = os.path.dirname(outputpath)
@@ -253,8 +264,11 @@ class FaceImage:
 
     def _getFace(self):
         """ Returns coordinates of the face in this image """
+        scale_factor = 1.1
+        min_neighbours = 5 # Higher is more accurate
+
         cascade = cv.CascadeClassifier(HC_FACEPATH)
-        faces = toRects(cascade.detectMultiScale(self.image))
+        faces = toRects(cascade.detectMultiScale(self.image, scale_factor, min_neighbours))
 
         for face in faces:
             self._log('Face found: ' + str(face), 1)
@@ -298,7 +312,6 @@ class FaceImage:
             color,
             cv.cv.CV_FILLED)
 
-
     def _log(self, msg, level=0):
         if DEBUG:
             self.log += '  '*level + str(msg) + '\n'
@@ -335,19 +348,28 @@ def crop(image, offset, size):
     else:
         return image[-offset.y:-offset.y + size.h, -offset.x:-offset.x + size.w]
 
+
 def runFaceImage(imagepath, outpath):
     # exceptions just disappear from multiprocessing.Pool, for some reason
+    fi = None
+
     try:
         print('beginning FaceImage run for image path: ' + imagepath)
         fi = FaceImage(imagepath)
-        fi.cropToFace()
-        fi.save(outpath)
-        print(fi.log)
+        if fi.crop_to_face():
+            fi.save(outpath)
+            print(fi.log)
+            return True
+
+        return False
 
     except Exception as e:
         # print all at once to keep imagepath and stack trace from getting separated by multithreading
         msg = '*** Incomplete: ' + imagepath + ' ***\n'
         msg += traceback.format_exc()
-        if fi != None:
+
+        if fi is not None:
             print(fi.log)
+
         print(msg)
+        return False
