@@ -44,7 +44,7 @@ class TrackImage:
 
         return None, False
 
-    def __motion_estimation_orb(self, ref_frame, new_frame, min_matches=20, min_match_ratio=0.3):
+    def __motion_estimation_orb(self, ref_frame, new_frame, min_matches=10):
         # Create an ORB detector
         detector = cv.FastFeatureDetector(16, True)
         extractor = cv.DescriptorExtractor_create('ORB')
@@ -71,17 +71,16 @@ class TrackImage:
             self.corners = np.float32([k1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
             self.corners_next = np.float32([k2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
-            transform, mask = cv.findHomography(self.corners, self.corners_next, cv.RANSAC, 5.0)
+            transform, mask = cv.findHomography(self.corners, self.corners_next, cv.RANSAC, 3.0)
 
-            # # Check that the transform indeed explains the corners shifts ?
-            # mask_match = [m for m in mask if m == 1]
-            # match_ratio = len(mask_match) / float(len(mask))
-            #
-            # if match_ratio < min_match_ratio:
-            #     print "Track lost - %d" % match_ratio
-            #     return None, False
+            # Check that the transform indeed explains the corners shifts ?
+            mask_match = [m for m in mask if m == 1]
 
-            # Align the previous accumulated frame
+            if len(mask_match) < min_matches:
+                print "Tracking lost - %d final matches" % len(mask_match)
+                return None, False
+
+            print("Transformation deemed valid")
             return transform, True
 
         else:
