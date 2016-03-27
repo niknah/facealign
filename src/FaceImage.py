@@ -92,7 +92,7 @@ class FaceImage:
         self._finalImg = None
         self.log = ''
 
-    def crop_to_face(self):
+    def align_to_face(self):
         """ Finds the face position of the OpenCV image, scales so that the face is the 'ideal'
         size, then crops so that the face is in the center """
         self._log('Starting ' + self.imagepath)
@@ -100,8 +100,8 @@ class FaceImage:
         l_eye = r_eye = None
 
         if not FORCE_FULL_FACE:
-            eyepair = self._getEyePair()
-            l_eye, r_eye = self._getEyes(eyepair)
+            eyepair = self._get_eye_pair()
+            l_eye, r_eye = self._get_eyes(eyepair)
 
         # Find the middle of the eyes
         if l_eye is not None and r_eye is not None:
@@ -118,13 +118,13 @@ class FaceImage:
                 eyewidth = eyepair.w*EYEPAIR_WIDTH_TO_EYE_WIDTH
             else:
                 self._log('No eyes found, falling back on face')
-                face = self._getFace()
+                face = self._get_face()
 
                 if face is not None:
                     mid = Point(face.center.x, face.h*FACE_HEIGHT_TO_EYE_MID + face.y)
                     eyewidth = face.w*FACE_WIDTH_TO_EYE_WIDTH
                     if MARKUSED or MARKALL:
-                        self._markPoint(mid, MIDPOINT_COLOR)
+                        self._mark_point(mid, MIDPOINT_COLOR)
 
                 else:
                     return False
@@ -180,7 +180,7 @@ class FaceImage:
 
         cv.imwrite(outputpath, self._finalImg)
 
-    def _getEyePair(self):
+    def _get_eye_pair(self):
         cascade = cv.CascadeClassifier(HC_EYEPAIRPATH)
         minSize = (int(EYEPAIR_MIN_SIZE[0]*self.origSize.w),
                    int(EYEPAIR_MIN_SIZE[1]*self.origSize.h))
@@ -194,7 +194,7 @@ class FaceImage:
         for eyepair in eyepairs:
             self._log('Eyepair found: ' + str(eyepair), 1)
             if MARKALL:
-                self._markRect(eyepair, EYEPAIR_COLOR)
+                self._mark_rect(eyepair, EYEPAIR_COLOR)
 
         # Find the largest eyepair
         largest = max(eyepairs, key=lambda e: e.a)
@@ -203,10 +203,10 @@ class FaceImage:
             return None
         else:
             if MARKUSED:
-                self._markRect(largest, EYEPAIR_COLOR)
+                self._mark_rect(largest, EYEPAIR_COLOR)
             return largest
 
-    def _getEyes(self, eyepair):
+    def _get_eyes(self, eyepair):
         lEyeCascade = cv.CascadeClassifier(HC_LEFTEYEPATH)
         rEyeCascade = cv.CascadeClassifier(HC_RIGHTEYEPATH)
 
@@ -217,12 +217,12 @@ class FaceImage:
         for eye in lEyes:
             self._log('Left eye found: ' + str(eye), 1)
             if MARKALL:
-                self._markRect(eye, LEFT_EYE_COLOR)
+                self._mark_rect(eye, LEFT_EYE_COLOR)
 
         for eye in rEyes:
             self._log('Right eye found: ' + str(eye), 1)
             if MARKALL:
-                self._markRect(eye, RIGHT_EYE_COLOR)
+                self._mark_rect(eye, RIGHT_EYE_COLOR)
 
         if len(lEyes) == 0 or len(rEyes) == 0:
             self._log("Didn't find both left and right eyes")
@@ -257,15 +257,15 @@ class FaceImage:
             return (None, None)
 
         if MARKUSED:
-            self._markRect(lEye, LEFT_EYE_COLOR)
-            self._markRect(rEye, RIGHT_EYE_COLOR)
+            self._mark_rect(lEye, LEFT_EYE_COLOR)
+            self._mark_rect(rEye, RIGHT_EYE_COLOR)
 
         return (lEye, rEye)
 
-    def _getFace(self):
+    def _get_face(self):
         """ Returns coordinates of the face in this image """
-        scale_factor = 1.1
-        min_neighbours = 5 # Higher is more accurate
+        scale_factor = 1.2
+        min_neighbours = 5  # Higher is more accurate
 
         cascade = cv.CascadeClassifier(HC_FACEPATH)
         faces = toRects(cascade.detectMultiScale(self.image, scale_factor, min_neighbours))
@@ -273,21 +273,21 @@ class FaceImage:
         for face in faces:
             self._log('Face found: ' + str(face), 1)
             if MARKALL:
-                self._markRect(face, FACE_COLOR)
+                self._mark_rect(face, FACE_COLOR)
 
         if len(faces) > 0:
             bestFace = faces[0]
             for face in faces:
-                bestFace = self._bestFace(bestFace, face)
+                bestFace = self._best_face(bestFace, face)
 
             if MARKUSED:
-                self._markRect(bestFace, FACE_COLOR)
+                self._mark_rect(bestFace, FACE_COLOR)
 
             return bestFace
         else:
             return None
 
-    def _bestFace(self, f1, f2):
+    def _best_face(self, f1, f2):
         # if the sizes of these faces are within .5% of each other, take the 
         # one nearest midpoint
         p = .005
@@ -298,12 +298,12 @@ class FaceImage:
         else:
             return max(f1, f2, key=lambda f: f.a)
 
-    def _markRect(self, rect, color):
+    def _mark_rect(self, rect, color):
         """ Marks the location of the given rect onto the image """
         cv.rectangle(self.image, (rect.x, rect.y), (rect.x + rect.w, rect.y + rect.h), color)
-        self._markPoint(rect.center, MIDPOINT_COLOR)
+        self._mark_point(rect.center, MIDPOINT_COLOR)
 
-    def _markPoint(self, p, color):
+    def _mark_point(self, p, color):
         pointSize = 10
         cv.rectangle(
             self.image,
@@ -316,8 +316,10 @@ class FaceImage:
         if DEBUG:
             self.log += '  '*level + str(msg) + '\n'
 
+
 def toRects(cvResults):
     return [Rect(result) for result in cvResults]
+
 
 def crop(image, offset, size):
     imageSize = Size(image)
@@ -349,14 +351,13 @@ def crop(image, offset, size):
         return image[-offset.y:-offset.y + size.h, -offset.x:-offset.x + size.w]
 
 
-def runFaceImage(imagepath, outpath):
-    # exceptions just disappear from multiprocessing.Pool, for some reason
+def run_face_image(imagepath, outpath):
     fi = None
 
     try:
-        print('beginning FaceImage run for image path: ' + imagepath)
+        print('-- Beginning FaceImage run for image path: ' + imagepath)
         fi = FaceImage(imagepath)
-        if fi.crop_to_face():
+        if fi.align_to_face():
             fi.save(outpath)
             print(fi.log)
             return True

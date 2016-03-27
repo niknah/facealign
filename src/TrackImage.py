@@ -7,25 +7,28 @@ Find the inter frame motion, try to make it robust to mismatches
 
 import cv2 as cv
 import numpy as np
-import time
+import traceback
+from config import *
+import os
 
 
 class TrackImage:
-
-    def __init__(self):
+    def __init__(self, ref_image_path, new_image_path):
+        self.new_path = new_image_path
         self.n_max_corners = 400
         self.corners_q_level = 4
-        self.reset = False
-        self.reset_ratio = 0.3
+        self.ref_image = cv.imread(ref_image_path)
+        self.new_image = cv.imread(new_image_path)
+        self.new_image_aligned = None
 
-    def compensate_interframe_motion(self, ref_frame, new_frame, method='shi_tomasi'):
+    def compensate_interframe_motion(self, method='shi_tomasi'):
         # Testing different methods here to align the frames
 
         if method == 'shi_tomasi':
-            transform, success = self.__motion_estimation_shi_tomasi(ref_frame, new_frame)
+            transform, success = self.__motion_estimation_shi_tomasi(self.ref_image, self.new_image)
 
         elif method == 'orb':
-            transform, success = self.__motion_estimation_orb(ref_frame, new_frame)
+            transform, success = self.__motion_estimation_orb(self.ref_image, self.new_image)
 
         elif method == 'sift':
             #    acc_frame_aligned = self.__compensate_SIFT( ref_frame, new_frame)
@@ -36,21 +39,17 @@ class TrackImage:
             ValueError('Wrong argument for motion compensation')
 
         if success:
-            return cv.warpPerspective(new_frame, transform, new_frame.shape[2::-1]), True
+            self.new_image_aligned = cv.warpPerspective(self.new_image, transform, self.ref_image.shape[:-1])
+            return self.new_image_aligned, True
 
         return None, False
 
-    def __motion_estimation_orb(self, ref_frame, new_frame):
-
+    def __motion_estimation_orb(self, ref_frame, new_frame, min_matches=20, min_match_ratio=0.3):
         # Create an ORB detector
         detector = cv.FastFeatureDetector(16, True)
-        # detector = cv2.GridAdaptedFeatureDetector(detector)
         extractor = cv.DescriptorExtractor_create('ORB')
 
-        # Test with ORB corners :
-        _min_match_count = 20
-
-        # find the keypoints and descriptors with ORB
+        # find the keypoints and descriptors
         kp1 = detector.detect(new_frame)
         k1, des1 = extractor.compute(new_frame, kp1)
 
@@ -66,53 +65,49 @@ class TrackImage:
         thres_dist = (sum(dist) / len(dist)) * 0.5  # threshold: half the mean
         good_matches = [m for m in matches if m.distance < thres_dist]
 
-        # - bring the second picture in the reference referential
-        if len(good_matches) > _min_match_count:
-            print "Enough matchs for compensation - %d/%d" % (len(good_matches), _min_match_count)
+        # compute the transformation from the brute force matches
+        if len(good_matches) > min_matches:
+            print "Enough matchs for compensation - %d/%d" % (len(good_matches), min_matches)
             self.corners = np.float32([k1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
             self.corners_next = np.float32([k2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
             transform, mask = cv.findHomography(self.corners, self.corners_next, cv.RANSAC, 5.0)
 
-            # Check that the transform indeed explains the corners shifts ?
-            mask_match = [m for m in mask if m == 1]
-            match_ratio = len(mask_match) / float(len(mask))
-            if match_ratio < self.reset_ratio:
-                self.reset = True
-                print "Accumulation reset, track lost - %d" % match_ratio
-                return False
+            # # Check that the transform indeed explains the corners shifts ?
+            # mask_match = [m for m in mask if m == 1]
+            # match_ratio = len(mask_match) / float(len(mask))
+            #
+            # if match_ratio < min_match_ratio:
+            #     print "Track lost - %d" % match_ratio
+            #     return None, False
 
             # Align the previous accumulated frame
             return transform, True
 
         else:
-            print "Not enough matches are found - %d/%d" % (len(good_matches), _min_match_count)
+            print "Not enough matches are found - %d/%d" % (len(good_matches), min_matches)
             return None, False
 
-    def __motion_estimation_shi_tomasi(self, ref_frame, new_frame):
-        """
-        Measure and compensate for inter-frame motion:
-        - get points on both frames
-        -- we use Shi & Tomasi here, to be adapted ?
-        @rtype : opencv frame
-        """
-        corners = cv.goodFeaturesToTrack(ref_frame, self.n_max_corners, .01, 50)
+    def __motion_estimation_shi_tomasi(self, ref_frame, new_frame, min_matches=20):
+        # detect corners
+        grey_frame = cv.cvtColor(ref_frame, cv.COLOR_BGR2GRAY)
+        corners = cv.goodFeaturesToTrack(grey_frame, self.n_max_corners, .01, 50)    # Better with Fast ?
+        corners_next, status, _ = cv.calcOpticalFlowPyrLK(ref_frame, new_frame, corners)    # Track points
 
-        # - track points
-        corners_next, status, _ = cv.calcOpticalFlowPyrLK(ref_frame, new_frame, corners)
-
-        # - track back (more reliable)
-        corners_next_back, status_back, _ = cv.calcOpticalFlowPyrLK(new_frame, ref_frame, corners_next)
+        corners_next_back, status_back, _ = cv.calcOpticalFlowPyrLK(new_frame, ref_frame, corners_next)     # Track back
 
         # - sort out to keep reliable points :
-        corners, corners_next = self.__sort_corners(corners, corners_next, status, corners_next_back, status_back)
+        corners, corners_next = self.__sort_corners(corners, corners_next, status, corners_next_back, status_back, 1.0)
 
-        # - compute the transformation from the tracked pattern
+        if len(corners) < 5:
+            return None, False
+
+        # Compute the transformation from the tracked pattern
         # -- estimate the rigid transform
         transform, mask = cv.findHomography(corners, corners_next, cv.RANSAC, 5.0)
 
         # -- see if this transform explains most of the displacements (thresholded..)
-        if len(mask[mask > 0]) > 20:  # TODO: More robust test here ?
+        if len(mask[mask > 0]) > min_matches:
             print "Enough match for motion compensation"
             return transform, True
 
@@ -122,11 +117,8 @@ class TrackImage:
 
     @staticmethod
     def __motion_estimation_sift(ref_frame, new_frame):
-        # Test with SIFT corners :
         _min_match_count = 10
         _flann_index_kdtree = 0
-
-        # Initiate SIFT detector
         sift = cv.SIFT()
 
         # find the keypoints and descriptors with SIFT
@@ -185,6 +177,20 @@ class TrackImage:
         except ValueError:
             print "Problem printing the motion vectors"
 
+    def save(self, outputpath):
+        if self.new_image_aligned is None:
+            print("Image not aligned, run motion compensation first")
+
+        outdir = os.path.dirname(outputpath)
+        try:
+            if not os.path.exists(outdir):
+                print('Creating directory ' + outdir)
+                os.makedirs(outdir)
+        except:
+            print(outdir)
+
+        cv.imwrite(outputpath, self.new_image_aligned)
+
     @staticmethod
     def __sort_corners(corners_init, corners_tracked, status_tracked,
                        corners_tracked_back, status_tracked_back, max_dist=0.5):
@@ -203,69 +209,27 @@ class TrackImage:
 
         return [corners_init[nice_points], corners_tracked[nice_points]]
 
-    @property
-    def show(self):
-        keep_going = False
 
-        # Show the current combined picture
-        print "Showing frame {}".format(self.n_fused_frames)
+def run_track_image(ref_image_path, new_image_path, output_path):
+    fi = None
 
-        # Do all the resizing beforehand
-        frame_fusion_resize = cv.resize(self.frame_acc_disp, (800, 600))
+    try:
+        print('-- Beginning TrackImage run for image path: ' + new_image_path)
 
-        # Onscreen print
-        cv.putText(frame_fusion_resize, "Space continues, Esc leaves \n R resets",
-                   (30, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, 255)
+        ti = TrackImage(ref_image_path, new_image_path)
+        _, success = ti.compensate_interframe_motion(method='orb')
 
-        cv.namedWindow("FrameFusion")
-        cv.imshow("FrameFusion", frame_fusion_resize)
-        cv.waitKey(5)
+        if success:
+            ti.save(output_path)
 
-        # Show the initial picture
-        cv.namedWindow('Raw frame')
+    except Exception as e:
+        # print all at once to keep imagepath and stack trace from getting separated by multithreading
+        msg = '*** Incomplete: ' + ref_image_path + ' ***\n'
+        msg += traceback.format_exc()
 
-        # - Show tracked features
-        self.__draw_vec(self.frame_prev, self.corners, self.corners_next)
+        if fi is not None:
+            print(fi.log)
 
-        frame_raw_resize = cv.resize(self.frame_prev, (800, 600))
-        cv.imshow('Raw frame', frame_raw_resize)
-        cv.waitKey(5)
-
-        start_time = time.time()
-
-        while 1:
-            k = cv.waitKey(33)
-
-            current_time = time.time()
-
-            # Escape quits
-            if 27 == k or 1048603 == k:
-                keep_going = False
-                cv.destroyWindow('FrameFusion')
-                cv.destroyWindow('Raw frame')
-                break
-
-            # Space continues
-            elif 32 == k or 1048608 == k:
-                keep_going = True
-                break
-
-            # R resets the accumulation
-            elif ord('r') == k or 1048690 == k:
-                keep_going = True
-                self.reset = True
-                print "Reset the accumulation"
-                break
-
-            # Timer went through, time to leave
-            elif (current_time - start_time) > 1:
-                keep_going = True
-                print "Waited enough, next frame !"
-                break
-
-            elif k != -1:
-                print k
-
-        return keep_going
-
+        print(msg)
+        return False
 
