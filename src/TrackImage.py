@@ -27,27 +27,27 @@ class TrackImage:
         if method == 'shi_tomasi':
             transform, success = self.__motion_estimation_shi_tomasi(self.ref_image, self.new_image)
 
-        elif method == 'orb':
-            transform, success = self.__motion_estimation_orb(self.ref_image, self.new_image)
+        elif method == 'feature':
+            transform, success = self.__motion_estimation_feature(self.ref_image, self.new_image)
 
         elif method == 'sift':
-            #    acc_frame_aligned = self.__compensate_SIFT( ref_frame, new_frame)
-            print "Cannot use SIFT right now..."
-            transform, success = None, False
+            transform, success = self.__motion_estimation_sift(self.ref_image, self.new_image)
 
         else:
             ValueError('Wrong argument for motion compensation')
 
         if success:
-            self.new_image_aligned = cv.warpPerspective(self.new_image, transform, self.ref_image.shape[:-1])
+            self.new_image_aligned = cv.warpPerspective(self.new_image, transform, self.ref_image.shape[1::-1])
             return self.new_image_aligned, True
 
         return None, False
 
-    def __motion_estimation_orb(self, ref_frame, new_frame, min_matches=10):
+    def __motion_estimation_feature(self, ref_frame, new_frame, min_matches=7):
         # Create an ORB detector
         detector = cv.FastFeatureDetector(16, True)
+        # extractor = cv.DescriptorExtractor_create('SIFT')
         extractor = cv.DescriptorExtractor_create('ORB')
+        # extractor = cv.DescriptorExtractor_create('FREAK')
 
         # find the keypoints and descriptors
         kp1 = detector.detect(new_frame)
@@ -59,10 +59,11 @@ class TrackImage:
         # Match using bruteforce
         matcher = cv.DescriptorMatcher_create('BruteForce-Hamming')
         matches = matcher.match(des1, des2)
+        matcher.knnMatch(des1, des2, )
 
         # keep only the reasonable matches
-        dist = [m.distance for m in matches]        # store all the good matches as per Lowe's ratio test.
-        thres_dist = (sum(dist) / len(dist)) * 0.5  # threshold: half the mean
+        dist = [m.distance for m in matches]
+        thres_dist = (sum(dist) / len(dist)) * 0.3
         good_matches = [m for m in matches if m.distance < thres_dist]
 
         # compute the transformation from the brute force matches
@@ -115,7 +116,7 @@ class TrackImage:
             return None, False
 
     @staticmethod
-    def __motion_estimation_sift(ref_frame, new_frame):
+    def __motion_estimation_sift(ref_frame, new_frame, min_matches=10):
         _min_match_count = 10
         _flann_index_kdtree = 0
         sift = cv.SIFT()
@@ -128,7 +129,6 @@ class TrackImage:
         search_params = dict(checks=50)
 
         flann = cv.FlannBasedMatcher(index_params, search_params)
-
         matches = flann.knnMatch(des1, des2, k=2)
 
         # store all the good matches as per Lowe's ratio test.
@@ -144,16 +144,15 @@ class TrackImage:
             dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
             transform, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
-            matchesMask = mask.ravel().tolist()
 
-            h, w = ref_frame.shape
-            pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
-            pts_transform = cv.perspectiveTransform(pts, transform)
-            #        new_frame = cv2.polylines(new_frame,[np.int32(transform)],True,255,3, cv2.LINE_AA)
+            # -- see if this transform explains most of the displacements (thresholded..)
+            if len(mask[mask > 0]) > min_matches:
+                print "Enough match for motion compensation"
+                return transform, True
 
-        else:
-            print "Not enough matches are found - %d/%d" % (len(good), _min_match_count)
-            matchesMask = None
+            else:
+                print "Not finding enough matchs - {}".format(len(mask[mask > 0]))
+                return None, False
 
     @staticmethod
     def __draw_vec(img, corners, corners_next):
@@ -216,7 +215,7 @@ def run_track_image(ref_image_path, new_image_path, output_path):
         print('-- Beginning TrackImage run for image path: ' + new_image_path)
 
         ti = TrackImage(ref_image_path, new_image_path)
-        _, success = ti.compensate_interframe_motion(method='orb')
+        _, success = ti.compensate_interframe_motion(method='sift')
 
         if success:
             ti.save(output_path)
