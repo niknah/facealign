@@ -143,7 +143,7 @@ class TrackImage:
             src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
             dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
 
-            transform, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
+            transform, mask = cv.findHomography(dst_pts, src_pts, cv.RANSAC, 5.0)
 
             # -- see if this transform explains most of the displacements (thresholded..)
             if len(mask[mask > 0]) > min_matches:
