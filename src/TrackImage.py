@@ -117,7 +117,6 @@ class TrackImage:
 
     @staticmethod
     def __motion_estimation_sift(ref_frame, new_frame, min_matches=10):
-        _min_match_count = 10
         _flann_index_kdtree = 0
         sift = cv.SIFT()
 
@@ -132,48 +131,26 @@ class TrackImage:
         matches = flann.knnMatch(des1, des2, k=2)
 
         # store all the good matches as per Lowe's ratio test.
-        good = []
+        good_matches = []
         for m, n in matches:
             if m.distance < 0.7 * n.distance:
-                good.append(m)
+                good_matches.append(m)
 
         # - bring the second picture in the current referential
-        if len(good) > _min_match_count:
-            print "Enough matches for compensation - %d/%d" % (len(good), _min_match_count)
-            src_pts = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
-            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+        if len(good_matches) > min_matches:
+            src_pts = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
             transform, mask = cv.findHomography(dst_pts, src_pts, cv.RANSAC, 5.0)
 
             # -- see if this transform explains most of the displacements (thresholded..)
             if len(mask[mask > 0]) > min_matches:
-                print "Enough match for motion compensation"
+                print "Motion compensation deemed valid - %d points" % len(mask[mask > 0])
                 return transform, True
 
             else:
-                print "Not finding enough matchs - {}".format(len(mask[mask > 0]))
+                print "No motion compensation, not enough points - %d" % len(mask[mask > 0])
                 return None, False
-
-    @staticmethod
-    def __draw_vec(img, corners, corners_next):
-        """
-        Draw motion vectors on the picture
-
-        @param img: picture to draw onto
-        @param corners: initial keypoints position
-        @param corners_next: position after tracking
-        """
-        try:
-            corn_xy = corners.reshape((-1, 2))
-            corn_xy_next = corners_next.reshape((-1, 2))
-
-            i = 0
-            for x, y in corn_xy:
-                cv.line(img, (int(x), int(y)), (int(corn_xy_next[i, 0]), int(corn_xy_next[i, 1])), [0, 0, 255], 5)
-                i += 1
-
-        except ValueError:
-            print "Problem printing the motion vectors"
 
     def save(self, outputpath):
         if self.new_image_aligned is None:
@@ -209,25 +186,14 @@ class TrackImage:
 
 
 def run_track_image(ref_image_path, new_image_path, output_path):
-    fi = None
+    print('-- Beginning TrackImage run for image path: ' + new_image_path)
 
-    try:
-        print('-- Beginning TrackImage run for image path: ' + new_image_path)
+    ti = TrackImage(ref_image_path, new_image_path)
+    _, success = ti.compensate_interframe_motion(method='sift')
 
-        ti = TrackImage(ref_image_path, new_image_path)
-        _, success = ti.compensate_interframe_motion(method='sift')
+    if success:
+        ti.save(output_path)
 
-        if success:
-            ti.save(output_path)
+    return success
 
-    except Exception as e:
-        # print all at once to keep imagepath and stack trace from getting separated by multithreading
-        msg = '*** Incomplete: ' + ref_image_path + ' ***\n'
-        msg += traceback.format_exc()
-
-        if fi is not None:
-            print(fi.log)
-
-        print(msg)
-        return False
 
