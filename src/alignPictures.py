@@ -61,7 +61,7 @@ def main():
     pool.join()
 
     # - check the results, try to compensate motion through another reference if needed
-    valid_frames = [item.get() for item in results.items()]
+    valid_frames = [item[1].get() for item in results.items()]
     print("Motion compensation results : \n{}".format(valid_frames))
 
 
