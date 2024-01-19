@@ -11,7 +11,6 @@ import traceback
 from config import *
 import os
 
-
 class TrackImage:
     def __init__(self, ref_image_path, new_image_path):
         self.new_path = new_image_path
@@ -68,7 +67,7 @@ class TrackImage:
 
         # compute the transformation from the brute force matches
         if len(good_matches) > min_matches:
-            print "Enough matchs for compensation - %d/%d" % (len(good_matches), min_matches)
+            print("Enough matchs for compensation - %d/%d" % (len(good_matches), min_matches))
             self.corners = np.float32([k1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
             self.corners_next = np.float32([k2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
@@ -78,14 +77,14 @@ class TrackImage:
             mask_match = [m for m in mask if m == 1]
 
             if len(mask_match) < min_matches:
-                print "Tracking lost - %d final matches" % len(mask_match)
+                print( "Tracking lost - %d final matches" % len(mask_match))
                 return None, False
 
             print("Transformation deemed valid")
             return transform, True
 
         else:
-            print "Not enough matches are found - %d/%d" % (len(good_matches), min_matches)
+            print("Not enough matches are found - %d/%d" % (len(good_matches), min_matches))
             return None, False
 
     def __motion_estimation_shi_tomasi(self, ref_frame, new_frame, min_matches=20):
@@ -108,17 +107,17 @@ class TrackImage:
 
         # -- see if this transform explains most of the displacements (thresholded..)
         if len(mask[mask > 0]) > min_matches:
-            print "Enough match for motion compensation"
+            print("Enough match for motion compensation")
             return transform, True
 
         else:
-            print "Not finding enough matchs - {}".format(len(mask[mask > 0]))
+            print( "Not finding enough matchs - {}".format(len(mask[mask > 0])))
             return None, False
 
     @staticmethod
     def __motion_estimation_sift(ref_frame, new_frame, min_matches=10):
         _flann_index_kdtree = 0
-        sift = cv.SIFT()
+        sift = cv.SIFT_create()
 
         # find the keypoints and descriptors with SIFT
         kp1, des1 = sift.detectAndCompute(ref_frame, None)
@@ -145,11 +144,11 @@ class TrackImage:
 
             # -- see if this transform explains most of the displacements (thresholded..)
             if len(mask[mask > 0]) > min_matches:
-                print "Motion compensation deemed valid - %d points" % len(mask[mask > 0])
+                print("Motion compensation deemed valid - %d points" % len(mask[mask > 0]))
                 return transform, True
 
             else:
-                print "No motion compensation, not enough points - %d" % len(mask[mask > 0])
+                print( "No motion compensation, not enough points - %d" % len(mask[mask > 0]))
                 return None, False
 
     def save(self, outputpath):
@@ -193,6 +192,8 @@ def run_track_image(ref_image_path, new_image_path, output_path):
 
     if success:
         ti.save(output_path)
+    else:
+        print("failed"+ new_image_path)
 
     return success
 
