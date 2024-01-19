@@ -11,6 +11,7 @@ import sys
 import os
 import FaceImage
 import TrackImage
+import datetime
 from multiprocessing import Pool
 from operator import itemgetter
 from PIL import Image
@@ -82,7 +83,7 @@ def sorted_images(input_dir):
     files = []
     for dirpath, dirnames, filenames in os.walk(input_dir):
         for filename in filenames:
-            if filename.upper().endswith('.JPG') or filename.upper().endswith('.JPEG'):
+            if filename.upper().endswith('.JPG') or filename.upper().endswith('.JPEG') or filename.upper().endswith('.PNG'):
                 file_path = os.path.join(dirpath, filename)
                 files.append((get_image_date(file_path), file_path))
 
@@ -93,8 +94,20 @@ def sorted_images(input_dir):
 
 def get_image_date(file_path):
     """ This returns the date as a formatted string like yyyy:mm:dd hh:mm:ss. Which is good enough for sorting. """
+
     DateTimeOriginalKey = 36867
-    return Image.open(file_path)._getexif()[DateTimeOriginalKey]
+    exif = Image.open(file_path).getexif()
+    if exif is None or not DateTimeOriginalKey in exif:
+        timestamp = os.path.getmtime(file_path)
+
+        # Convert the timestamp to a datetime object
+        last_modified_date = datetime.date.fromtimestamp(timestamp)
+
+        # Format the datetime object as a string (adjust the format as needed)
+        date_string = last_modified_date.strftime("%Y-%m-%d %H:%M:%S")
+        return date_string
+    else:
+        return exif[DateTimeOriginalKey]
 
 
 if __name__ == "__main__":
